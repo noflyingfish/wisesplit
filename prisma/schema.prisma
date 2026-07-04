@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members      GroupMember[]
+  expenses     Expense[]
+  settlements  Settlement[]
+  categories   Category[]
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  name      String
+  groupId    String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  paidExpenses    Expense[]     @relation("PaidBy")
+  expenseShares   ExpenseShare[]
+  settlementsPaid Settlement[]  @relation("PaidByMember")
+  settlementsRcvd Settlement[]  @relation("ReceivedByMember")
+
+  @@unique([groupId, name])
+}
+
+model Category {
+  id      String @id @default(cuid())
+  emoji   String
+  name    String
+  groupId  String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  expenses Expense[]
+
+  @@unique([groupId, name])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float
+  paidById    String
+  paidBy      GroupMember @relation("PaidBy", fields: [paidById], references: [id])
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  shares ExpenseShare[]
+
+  @@index([groupId, createdAt])
+}
+
+model ExpenseShare {
+  id        String @id @default(cuid())
+  expenseId  String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  memberId   String
+  member    GroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount    Float
+
+  @@unique([expenseId, memberId])
+}
+
+model Settlement {
+  id           String   @id @default(cuid())
+  groupId      String
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidById     String
+  paidBy       GroupMember @relation("PaidByMember", fields: [paidById], references: [id])
+  receivedById String
+  receivedBy   GroupMember @relation("ReceivedByMember", fields: [receivedById], references: [id])
+  amount       Float
+  createdAt    DateTime @default(now())
+
+  @@index([groupId, createdAt])
+}

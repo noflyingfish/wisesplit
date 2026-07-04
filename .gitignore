@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/app/generated/prisma
+
+# database
+*.db
+*.db-journal
+*.db-wal
+
+# claude
+.claude/
+
+# qa test artifacts
+test-results/
+
+# editor
+.vscode/
+.idea/
