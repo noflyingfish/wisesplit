@@ -91,19 +91,19 @@ export default async function DashboardPage({
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
             <ArrowDownRight size={16} className="text-rose-500" />You owe
           </div>
-          <p className="text-xl font-bold text-rose-600">{formatCurrency(oweSum)}</p>
+          <p className="text-xl font-bold text-rose-700">{formatCurrency(oweSum)}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <ArrowUpRight size={16} className="text-emerald-500" />You&apos;re owed
+            <ArrowUpRight size={16} className="text-emerald-700" />You&apos;re owed
           </div>
-          <p className="text-xl font-bold text-emerald-600">{formatCurrency(owedSum)}</p>
+          <p className="text-xl font-bold text-emerald-700">{formatCurrency(owedSum)}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <Minus size={16} className="text-slate-400" />Net
+            <Minus size={16} className="text-slate-500" />Net
           </div>
-          <p className={`text-xl font-bold ${net > 0 ? "text-emerald-600" : net < 0 ? "text-rose-600" : "text-slate-600"}`}>
+          <p className={`text-xl font-bold ${net > 0 ? "text-emerald-700" : net < 0 ? "text-rose-700" : "text-slate-600"}`}>
             {formatCurrency(net)}
           </p>
         </Card>
@@ -117,7 +117,7 @@ export default async function DashboardPage({
           {simplifiedDebts.map((d, i) => (
             <div key={i} className="px-5 py-3 flex items-center gap-3 text-sm">
               <span className="font-medium text-slate-900">{d.fromName}</span>
-              <span className="text-slate-400">pays</span>
+              <span className="text-slate-500">pays</span>
               <span className="font-medium text-slate-900">{d.toName}</span>
               <span className="ml-auto font-semibold text-slate-700">{formatCurrency(d.amount)}</span>
             </div>
@@ -132,7 +132,7 @@ export default async function DashboardPage({
             <div className="text-3xl mb-3">🧾</div>
             <p className="text-slate-500 mb-4">No activity yet</p>
             <Link href={`/g/${groupSlug}/expenses/new`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors">
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white font-medium rounded-xl hover:bg-emerald-800 transition-colors">
               <Plus size={16} />Add your first expense
             </Link>
           </Card>
@@ -147,7 +147,7 @@ export default async function DashboardPage({
                 </div>
                 <div className="text-right flex-shrink-0">
                   {a.youTag && <p className="text-xs font-medium text-slate-700">{a.youTag}</p>}
-                  <p className="text-xs text-slate-400 mt-0.5">{timeAgo(a.time)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{timeAgo(a.time)}</p>
                 </div>
               </div>
             ))}
@@ -156,7 +156,7 @@ export default async function DashboardPage({
       </div>
 
       <Link href={`/g/${groupSlug}/expenses/new`}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-200 flex items-center justify-center transition-all hover:scale-105 active:scale-95 z-40">
+        className="fixed bottom-6 right-6 w-14 h-14 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl shadow-lg shadow-emerald-200 flex items-center justify-center transition-all hover:scale-105 active:scale-95 z-40">
         <Plus size={24} />
       </Link>
     </div>

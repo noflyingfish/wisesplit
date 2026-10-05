@@ -27,10 +27,15 @@ export function JoinForm({
     }
 
     setSubmitting(true);
-    const result = await joinGroup(groupSlug, formData);
-    setSubmitting(false);
-    if (result.error) {
-      setError(result.error);
+    // `finally` for the same reason as the landing form: a rejected action must not
+    // leave the control reading "Joining..." with the rejection unreported.
+    try {
+      const result = await joinGroup(groupSlug, formData);
+      if (result?.error) setError(result.error);
+    } catch {
+      setError("Could not join the group because of a server error. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -45,10 +50,11 @@ export function JoinForm({
 
         <form
           onSubmit={handleSubmit}
+          noValidate
           className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6"
         >
           {error && (
-            <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+            <div role="alert" className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
               {error}
             </div>
           )}
@@ -67,7 +73,7 @@ export function JoinForm({
                 type="text"
                 required
                 placeholder="Enter your name"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all"
                 autoFocus
               />
             </div>
@@ -75,20 +81,20 @@ export function JoinForm({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm"
+              className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm"
             >
               {submitting ? "Joining..." : "Join Group"}
             </button>
           </div>
         </form>
 
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-slate-500">
           Already have a link? Paste the full URL in your browser.
         </p>
 
         <Link
           href="/"
-          className="inline-block mt-6 text-sm text-slate-400 hover:text-slate-500"
+          className="inline-block mt-6 text-sm text-slate-500 hover:text-slate-600"
         >
           ← Create a new group instead
         </Link>

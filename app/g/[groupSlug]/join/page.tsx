@@ -27,7 +27,7 @@ export default async function JoinPage({
           </p>
           <Link
             href="/"
-            className="inline-block px-5 py-2.5 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors"
+            className="inline-block px-5 py-2.5 bg-emerald-700 text-white font-medium rounded-xl hover:bg-emerald-800 transition-colors"
           >
             Create a new group
           </Link>

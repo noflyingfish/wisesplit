@@ -9,10 +9,18 @@ export default function AuthError({ error, reset }: { error: Error & { digest?: 
       <div className="text-center max-w-sm">
         <div className="text-5xl mb-4">😵</div>
         <h2 className="text-lg font-bold text-slate-900 mb-2">Something went wrong</h2>
-        <p className="text-sm text-slate-500 mb-6">{error.message || "An unexpected error occurred"}</p>
+        {/* Never render `error.message`: in production a server error carries the raw
+            Prisma message, which includes the failing query and the database host. The
+            digest is an opaque hash and is safe to show as a support reference. */}
+        <p className="text-sm text-slate-500 mb-2">
+          An unexpected error occurred. Nothing was saved — please try again.
+        </p>
+        {error.digest && (
+          <p className="text-xs text-slate-500 mb-6">Reference: {error.digest}</p>
+        )}
         <div className="flex gap-3 justify-center">
           <button onClick={reset}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition-colors">
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white font-medium rounded-xl hover:bg-emerald-800 transition-colors">
             <RotateCw size={16} />Try again
           </button>
           <Link href="/"

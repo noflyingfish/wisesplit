@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the committed template must be tracked, or a fresh clone has no
+# in-repo reference for DATABASE_URL.
+!.env.example
+
+# deploy config — the single file you edit for deployment settings (profiles,
+# database, and later TLS/domain/backups). Tracked template: deploy.example.yml.
+/config/deploy.yml
 
 # vercel
 .vercel
@@ -56,3 +63,5 @@ test-results/
 # editor
 .vscode/
 .idea/
+
+.vercel

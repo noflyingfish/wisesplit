@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { generateToken } from "@/lib/utils";
+import { textLengthError } from "@/lib/text-limits";
 
 export async function addMember(
   groupSlug: string,
@@ -16,6 +17,11 @@ export async function addMember(
 
   const name = (formData.get("name") as string)?.trim();
   if (!name) return { error: "Name is required" };
+
+  // `GroupMember.name` is `varchar(191)`; refuse before the write so no `P2000` can
+  // reach the user (see `lib/text-limits.ts`).
+  const nameError = textLengthError(name, "Member name");
+  if (nameError) return { error: nameError };
 
   const group = await db.group.findUnique({ where: { slug: groupSlug } });
   if (!group) return { error: "Group not found" };
@@ -42,6 +48,15 @@ export async function addCategory(
   const emoji = (formData.get("emoji") as string)?.trim();
   const name = (formData.get("name") as string)?.trim();
   if (!emoji || !name) return { error: "Emoji and name are required" };
+
+  // `Category.name` and `Category.emoji` are both `varchar(191)`. The emoji comes from
+  // the form's fixed picker, so it cannot be over-length from the UI today — checked
+  // anyway, for the same reason the picker is not trusted: the action is a network
+  // endpoint and the server check has to be correct on its own.
+  const emojiError = textLengthError(emoji, "Emoji");
+  if (emojiError) return { error: emojiError };
+  const nameError = textLengthError(name, "Category name");
+  if (nameError) return { error: nameError };
 
   const group = await db.group.findUnique({ where: { slug: groupSlug } });
   if (!group) return { error: "Group not found" };

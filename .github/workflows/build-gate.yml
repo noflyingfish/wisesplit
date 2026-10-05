@@ -1,0 +1,66 @@
+name: Build gate
+
+# Why this workflow exists.
+#
+# QA round 4 found three TypeScript errors (A1-A3) that shipped through three
+# rounds of testing. `next dev` compiles routes lazily and does not hard-fail on
+# type errors, so the app served every page happily while `next build` refused to
+# produce an artifact at all. Nothing in the repository enforced the build, so the
+# defect class survived on human review alone.
+#
+# These two commands are the gate. They must stay required on the default branch -
+# without them the same class of defect recurs silently.
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-build:
+    name: tsc --noEmit + next build
+    runs-on: ubuntu-latest
+    env:
+      # A placeholder secret. `config/deploy.yml` references it as
+      # `password: ${WISESPLIT_DB_PASSWORD}`, so it must be set for the config layer to
+      # resolve — but nothing connects to it: this job only compiles and prerenders.
+      # The database (MariaDB) is not needed to build, and no CI job may touch a real one.
+      WISESPLIT_DB_PASSWORD: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `config/deploy.yml` is gitignored (it is the file a human edits), so CI builds
+      # the committed template — which means this step also verifies the template a
+      # fresh clone gets: zod validates it, `${WISESPLIT_DB_PASSWORD}` interpolates, and
+      # `next.config.ts` projects the result into `process.env.DATABASE_URL`. If the
+      # example ever drifts from what `lib/config/deploy.ts` accepts, this job fails with
+      # the readable `config/deploy.yml: <setting> <problem>` message.
+      - name: Create the deployment config from the committed template
+        run: cp config/deploy.example.yml config/deploy.yml
+
+      - name: Generate the Prisma client
+        run: npx prisma generate --schema prisma/schema.prisma
+
+      # TC-BUILD-001: the cheapest gate, and the only one that catches a defect
+      # like A2 (a call to a function that was never imported) without clicking
+      # anything.
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # TC-BUILD-002: `next build` type-checks the whole project and aborts on the
+      # first error. Run it standalone - it is memory-hungry.
+      - name: Production build
+        run: npm run build

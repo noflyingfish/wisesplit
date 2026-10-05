@@ -32,7 +32,7 @@ export function GroupTabs({ groupSlug }: { groupSlug: string }) {
             href={href}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
               isActive
-                ? "border-emerald-500 text-emerald-600"
+                ? "border-emerald-700 text-emerald-700"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
             }`}
           >

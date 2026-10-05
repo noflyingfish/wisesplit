@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useState, useRef } from "react";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 import { createSettlement } from "@/app/g/[groupSlug]/(auth)/settle/_actions";
 import { formatCurrency } from "@/lib/utils";
@@ -11,42 +10,66 @@ type Member = { id: string; name: string };
 type DebtSuggestion = { fromId: string; fromName: string; toId: string; toName: string; amount: number };
 
 export function SettleForm({ groupSlug, members, currentMemberId, suggestions }: { groupSlug: string; members: Member[]; currentMemberId: string; suggestions: DebtSuggestion[] }) {
-  const router = useRouter();
   const [paidById, setPaidById] = useState(currentMemberId);
   const [receivedById, setReceivedById] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState(false);
+  // Same idempotency guard as the expense form: once a settlement is accepted, a
+  // second submit must not be able to record it twice.
+  const submittedRef = useRef(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittedRef.current) return;
     setError(null);
     const amountNum = parseFloat(amount);
     if (!paidById || !receivedById) { setError("Select both people"); return; }
     if (paidById === receivedById) { setError("Cannot settle with yourself"); return; }
     if (!amountNum || amountNum <= 0) { setError("Amount must be positive"); return; }
 
+    submittedRef.current = true;
     setSubmitting(true);
     const formData = new FormData();
     formData.append("paidById", paidById);
     formData.append("receivedById", receivedById);
     formData.append("amount", amountNum.toString());
-    const result = await createSettlement(groupSlug, formData);
+    // The action redirects to /balances itself on success, so this promise only ever
+    // carries an error. A client-side push here was unreliable (measured on the
+    // expense form: 7 of 8 navigations lost).
+    const result = await createSettlement(groupSlug, formData).catch(() => undefined);
+
+    if (result?.error) {
+      submittedRef.current = false;
+      setSubmitting(false);
+      setError(result.error);
+      return;
+    }
+
+    // Reached only if the redirect did not fire. Stay disabled so a second click
+    // cannot record the settlement twice.
     setSubmitting(false);
-    if (result.error) { setError(result.error); } else { router.push(`/g/${groupSlug}/balances`); router.refresh(); }
+    setSaved(true);
   }
 
   function applySuggestion(s: DebtSuggestion) { setPaidById(s.fromId); setReceivedById(s.toId); setAmount(s.amount.toString()); }
 
+  // `noValidate` for the same reason as the expense form: the amount input carries
+  // `min="0.01"`, and the browser's native bubble would fire first and make the app's
+  // own "Amount must be positive" unreachable.
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} noValidate className="space-y-6">
       <Link href={`/g/${groupSlug}/balances`} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700"><ArrowLeft size={16} /> Back</Link>
       <h2 className="text-lg font-bold text-slate-900">Settle Up</h2>
-      {error && <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">{error}</div>}
+      {/* Same banner shape and `role="alert"` as the expense, landing and join forms —
+          this was the one rejection surface in the app without it, so a screen reader
+          (and the QA harness's `[role="alert"]` detector) could not see a refusal. */}
+      {error && <div role="alert" className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">{error}</div>}
 
       {suggestions.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Suggested</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Suggested</p>
           <div className="space-y-2">
             {suggestions.map((s, i) => (
               <button key={i} type="button" onClick={() => applySuggestion(s)}
@@ -54,7 +77,7 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
                 <span className="font-medium text-sm text-slate-700">{s.fromName}{s.fromId === currentMemberId ? " (you)" : ""}</span>
                 <ArrowRight size={14} className="text-slate-300" />
                 <span className="font-medium text-sm text-slate-700">{s.toName}{s.toId === currentMemberId ? " (you)" : ""}</span>
-                <span className="ml-auto font-semibold text-sm text-emerald-600">{formatCurrency(s.amount)}</span>
+                <span className="ml-auto font-semibold text-sm text-emerald-700">{formatCurrency(s.amount)}</span>
               </button>
             ))}
           </div>
@@ -64,7 +87,7 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
       <div className="space-y-2">
         <label className="block text-sm font-medium text-slate-700">Who paid</label>
         <select value={paidById} onChange={(e) => setPaidById(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all">
           <option value="">Select...</option>
           {members.map((m) => (<option key={m.id} value={m.id}>{m.name}{m.id === currentMemberId ? " (you)" : ""}</option>))}
         </select>
@@ -73,7 +96,7 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
       <div className="space-y-2">
         <label className="block text-sm font-medium text-slate-700">Who received</label>
         <select value={receivedById} onChange={(e) => setReceivedById(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all">
           <option value="">Select...</option>
           {members.map((m) => (<option key={m.id} value={m.id}>{m.name}{m.id === currentMemberId ? " (you)" : ""}</option>))}
         </select>
@@ -82,15 +105,24 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
       <div className="space-y-2">
         <label className="block text-sm font-medium text-slate-700">Amount</label>
         <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">$</span>
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
           <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required
-            className="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" />
+            className="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all" />
         </div>
       </div>
 
-      <button type="submit" disabled={submitting}
-        className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm">
-        {submitting ? "Saving..." : "Record Settlement"}
+      <button type="submit" disabled={submitting || saved}
+        className="w-full py-3.5 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm">
+        {saved ? (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Check size={18} />
+            Recorded
+          </span>
+        ) : submitting ? (
+          "Saving..."
+        ) : (
+          "Record Settlement"
+        )}
       </button>
     </form>
   );

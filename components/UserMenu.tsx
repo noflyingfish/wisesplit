@@ -44,10 +44,16 @@ export function UserMenu({
   }
 
   async function handleLeave() {
-    await clearMemberCookie("current");
+    // Must pass the real groupSlug: the cookie is named `wisesplit_<memberToken>`
+    // and scoped to `/g/<groupSlug>`, so both the name set and the path deleted
+    // depend on it. The previous call here used the literal string "current",
+    // which matched no cookie that has ever been written.
+    await clearGroupCookie(groupSlug);
     setOpen(false);
+    // `revalidatePath`-style invalidation is not needed for a cookie write; the
+    // server action re-renders the affected layout and the layout guard then
+    // redirects to /join.
     router.push(`/g/${groupSlug}/join`);
-    router.refresh();
   }
 
   return (
@@ -66,7 +72,7 @@ export function UserMenu({
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50">
-          <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Switch Member
           </div>
           {members.map((m) => (
@@ -77,16 +83,16 @@ export function UserMenu({
               }}
               className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${
                 m.id === currentMember.memberId
-                  ? "text-emerald-600 font-medium"
+                  ? "text-emerald-700 font-medium"
                   : "text-slate-700"
               }`}
             >
               <span>
                 {m.id === currentMember.memberId ? `${m.name} (you)` : m.name}
               </span>
-              <span className="flex items-center gap-1 text-slate-400 hover:text-emerald-500">
+              <span className="flex items-center gap-1 text-slate-500 hover:text-emerald-700">
                 {copied === m.name ? (
-                  <Check size={14} className="text-emerald-500" />
+                  <Check size={14} className="text-emerald-700" />
                 ) : (
                   <Copy size={14} />
                 )}
@@ -96,7 +102,7 @@ export function UserMenu({
           <div className="border-t border-slate-100 mt-1 pt-1">
             <button
               onClick={handleLeave}
-              className="w-full text-left px-4 py-2 text-sm text-slate-500 hover:text-rose-600 hover:bg-slate-50 transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-slate-500 hover:text-rose-800 hover:bg-slate-50 transition-colors"
             >
               Leave group
             </button>

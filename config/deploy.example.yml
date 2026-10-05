@@ -1,0 +1,97 @@
+# ============================================================================
+# Wisesplit deployment configuration
+# ============================================================================
+#
+# This file is THE place to edit deployment settings — think `application.yml`.
+# It is gitignored, so your local values stay local. The committed template is
+# `config/deploy.example.yml`; copy that one if this file is missing.
+#
+# HOW IT IS USED
+#   `lib/config/deploy.ts` reads this file, picks the active profile, validates
+#   it, and projects the result into `process.env.DATABASE_URL` BEFORE Prisma
+#   and Next.js read anything. Both the Prisma CLI (`prisma.config.ts`) and the
+#   app (`next.config.ts`) go through that one step, so there is exactly one
+#   effective `DATABASE_URL` at runtime and it comes from here. Do not also set
+#   `DATABASE_URL` in `.env` — that is the second source of truth this design
+#   removes, and the loader will warn you if it finds one.
+#
+# SECRETS
+#   Never paste a password here. Write `${VAR}` and put the value in `.env`
+#   (gitignored) or in the real environment on a server. `${VAR:-fallback}`
+#   supplies a default. A reference to an unset variable is a startup error, so
+#   a missing secret fails loudly at boot instead of connecting somewhere else.
+#
+# PROFILES
+#   `defaults` is shared by every profile. `profiles.<name>` overrides it.
+#   Precedence for choosing the profile, highest first:
+#     1. DEPLOY_PROFILE in the environment
+#     2. `profile:` below
+#     3. NODE_ENV: development -> dev, test -> test, production -> prod
+#   Run `DEPLOY_PROFILE=test npm run dev` to point the app at the test database.
+#
+# A malformed file stops startup with a readable message, e.g.
+#   config/deploy.yml: database.host is required
+# ============================================================================
+
+# The profile used when DEPLOY_PROFILE is not set.
+profile: dev
+
+defaults:
+  database:
+    host: 127.0.0.1
+    port: 3306
+    user: wisesplit_app
+    password: ${WISESPLIT_DB_PASSWORD}
+    # The app stores emoji and free text literally. utf8mb4 (NOT legacy 3-byte
+    # "utf8") is what makes that possible; utf8mb4_bin keeps lookups and the
+    # @@unique([groupId, name]) constraints case-SENSITIVE, matching SQLite's
+    # BINARY collation the app was written against. These are the values
+    # `tables.sql` pinned per table, recorded here so the intent is visible.
+    charset: utf8mb4
+    collation: utf8mb4_bin
+
+profiles:
+  # Local development. Safe to wipe and re-create.
+  dev:
+    database:
+      name: wisesplit_dev
+
+  # QA / automated test runs. Nothing here is precious.
+  test:
+    database:
+      name: wisesplit_test
+
+  # The real deployment. Every value that differs per host comes from the
+  # environment, so this file can be deployed unchanged.
+  prod:
+    database:
+      host: ${WISESPLIT_DB_HOST}
+      port: ${WISESPLIT_DB_PORT:-3306}
+      name: ${WISESPLIT_DB_NAME}
+      user: ${WISESPLIT_DB_USER}
+      password: ${WISESPLIT_DB_PASSWORD}
+
+    # ----------------------------------------------------------------------
+    # Not built yet. These sections are recognised by the loader but nothing
+    # reads them, so leave them commented until the code that consumes them
+    # lands — then add the schema for the section first.
+    # ----------------------------------------------------------------------
+    #
+    # tls:
+    #   # How the app reaches the database once it is not on localhost.
+    #   # The local server is loopback-only and needs none of this.
+    #   enabled: true
+    #   # sslmode: require            # require | verify-ca | verify-full
+    #   # ca: ${WISESPLIT_DB_CA_PATH}
+    #
+    # domain:
+    #   # Public address the app is served from, and how it terminates TLS.
+    #   # host: wisesplit.example.com
+    #   # tls: letsencrypt
+    #   # email: ${LETSENCRYPT_EMAIL}
+    #
+    # backup:
+    #   # Scheduled dumps of the app database, and how long they are kept.
+    #   # schedule: "0 3 * * *"       # daily at 03:00
+    #   # directory: /var/backups/wisesplit
+    #   # keep_days: 14

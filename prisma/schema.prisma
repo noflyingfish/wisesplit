@@ -2,8 +2,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// MariaDB / MySQL. Both engines use the SAME Prisma provider — there is no
+// "mariadb" provider. The live database is schema-managed by `tables.sql` (see
+// the foot of that file for the money-type rationale); this schema describes
+// what that DDL already created.
+//
+// `DATABASE_URL` is authored in `config/deploy.yml` and projected into
+// `process.env` by `lib/config/load.ts` before Prisma or Next reads anything —
+// so this stays the single effective source at runtime. See `prisma.config.ts`.
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -12,12 +20,18 @@ model Group {
   slug      String   @unique
   name      String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // `tables.sql` gives this column `DEFAULT CURRENT_TIMESTAMP(3)` (both Group
+  // timestamps carry it). Declaring it here keeps the schema an exact description of
+  // the live table: without it, `prisma db push` would emit
+  // `ALTER TABLE Group ALTER COLUMN updatedAt DROP DEFAULT`, and `migrate diff`
+  // reports a difference that is not real. Prisma still sets the value itself.
+  updatedAt DateTime @default(now()) @updatedAt
 
   members      GroupMember[]
   expenses     Expense[]
   settlements  Settlement[]
   categories   Category[]
+
 }
 
 model GroupMember {
@@ -51,7 +65,10 @@ model Category {
 model Expense {
   id          String   @id @default(cuid())
   description String
-  amount      Float
+  /// Exact decimal, NOT a Float. The precision annotation is load-bearing: a bare
+  /// Prisma `Decimal` maps to DECIMAL(65,30) and `db pull` would widen the column
+  /// back to that. Money is DECIMAL(12,2) = 10 integer digits + 2 decimal.
+  amount      Decimal  @db.Decimal(12, 2)
   paidById    String
   paidBy      GroupMember @relation("PaidBy", fields: [paidById], references: [id])
   groupId     String
@@ -60,6 +77,13 @@ model Expense {
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
+  /// Which of the three split modes the user actually chose: "equal" | "unequal"
+  /// | "percentage". Nullable on purpose: rows written before this column existed
+  /// carry no answer, and the stored dollar shares CANNOT reconstruct it (a 60/40
+  /// percentage split stores 600/400, which looks exactly like an unequal split, and
+  /// an even percentage split looks exactly like an equal one). NULL therefore means
+  /// "unknown — fall back to the share-shape heuristic", NOT "equal".
+  splitType   String?
 
   shares ExpenseShare[]
 
@@ -72,7 +96,16 @@ model ExpenseShare {
   expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   memberId   String
   member    GroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  amount    Float
+  amount    Decimal  @db.Decimal(12, 2)
+  /// The whole-number percentage the user typed, for "percentage" expenses only.
+  /// Stored alongside `amount` because the dollar figure cannot be inverted back to
+  /// the percentage the user entered (and re-deriving it can land on 99% or 101%
+  /// after rounding, which would block the form from saving). Null for every other
+  /// split type and for rows written before this column existed.
+  ///
+  /// DECIMAL(5,2), not (12,2): a percentage never exceeds 100, and the narrower
+  /// column is what `tables.sql` created.
+  percentage Decimal? @db.Decimal(5, 2)
 
   @@unique([expenseId, memberId])
 }
@@ -85,7 +118,7 @@ model Settlement {
   paidBy       GroupMember @relation("PaidByMember", fields: [paidById], references: [id])
   receivedById String
   receivedBy   GroupMember @relation("ReceivedByMember", fields: [receivedById], references: [id])
-  amount       Float
+  amount       Decimal  @db.Decimal(12, 2)
   createdAt    DateTime @default(now())
 
   @@index([groupId, createdAt])

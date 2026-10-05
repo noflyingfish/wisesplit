@@ -1,0 +1,54 @@
+# What `vercel` uploads — and what it must never upload.
+#
+# IMPORTANT: the Vercel CLI does NOT read `.gitignore`. When you deploy without the
+# Git integration (`npx vercel --prod`), Vercel honours only this file plus its own
+# built-in default list — and that default list covers `.env.local` and
+# `.env.*.local`, but NOT plain `.env`. So every path below would be uploaded with
+# the deployment unless it is named here. `.gitignore` protects the repo; this file
+# protects the upload, and they are separate mechanisms.
+#
+# The secrets are NOT "deployed" as files. They are entered into the Vercel project
+# as Environment Variables (Settings -> Environment Variables, or `vercel env add`),
+# which Vercel encrypts, stores, and injects as `process.env.*` at build time and at
+# every function invocation. This file exists to stop the local copies from
+# travelling — not to provide the values.
+
+# Local secrets. `.env` holds WISESPLIT_DB_PASSWORD; `.env.*` covers the rest,
+# including the `.env.example` template, which nothing needs at runtime.
+.env
+.env.*
+
+# The deployment config carries the REAL production host, user and password for the
+# `prod` profile. Excluding it is not only about secrecy — it is what makes the
+# Vercel environment variable the source of truth:
+#
+#   `next.config.ts` calls `applyDeployConfig()` during the build, and that loader
+#   PROJECTS the file's active profile into `process.env.DATABASE_URL`. If the file
+#   ships, the build resolves `profile: dev` from it and OVERWRITES the prod
+#   DATABASE_URL set in the dashboard with the dev database.
+#
+# With the file absent the loader returns null, prints a warning, and leaves the
+# environment variable alone — which is the behaviour we want here.
+config/deploy.yml
+
+# Schema DDL and local QA artefacts — read by humans, never at runtime.
+/tables.sql
+/wisesplit_table.sql
+/test-results/
+
+# Leftover SQLite databases from before the MariaDB migration. Not credentials, but
+# stale pre-migration data with no business in a deployment. Vercel's built-in
+# ignore list does not cover `*.db`, so they are named here rather than deleted.
+*.db
+*.db-journal
+*.db-wal
+
+# Derived/generated output. `app/generated/prisma` is vestigial — nothing imports it,
+# and `prisma generate` runs on Vercel into `node_modules/.prisma/client` (the schema
+# declares no custom `output`). The tsbuildinfo is just a local incremental cache.
+app/generated/
+*.tsbuildinfo
+
+# Local tooling state.
+.claude/
+.vercel

@@ -27,7 +27,7 @@ export default async function GroupLayout({
           </p>
           <Link
             href="/"
-            className="inline-block mt-4 text-emerald-600 font-medium hover:text-emerald-700"
+            className="inline-block mt-4 text-emerald-700 font-medium hover:text-emerald-800"
           >
             Create a new group →
           </Link>
