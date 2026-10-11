@@ -25,7 +25,7 @@ export default async function ExpensesPage({
 
   const expenses = await db.expense.findMany({
     where: { groupId: group.id, ...(category ? { categoryId: category } : {}) },
-    include: { paidBy: true, shares: { include: { member: true } }, category: true },
+    include: { paidBy: true, shares: { include: { member: true } }, category: true, currency: true },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
 
@@ -37,6 +37,9 @@ export default async function ExpensesPage({
   const expenseRows = expenses.map((e) => ({
     ...e,
     amount: toNumber(e.amount),
+    // The ISO code, not the Currency row: the list only ever displays the code, and
+    // a plain string crosses the boundary cleanly.
+    currency: e.currency.code,
     shares: e.shares.map((s) => ({
       memberId: s.memberId,
       amount: toNumber(s.amount),

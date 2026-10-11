@@ -3,8 +3,10 @@ import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { computeBalances } from "@/lib/balance";
 import { formatCurrency, timeAgo } from "@/lib/utils";
+import { DEFAULT_CURRENCY_CODE } from "@/lib/currencies";
 import { Card } from "@/components/Card";
-import { ArrowDownRight, ArrowUpRight, Minus, Plus } from "lucide-react";
+import { CurrencySummary } from "./_components/CurrencySummary";
+import { Plus } from "lucide-react";
 
 export default async function DashboardPage({
   params,
@@ -21,24 +23,32 @@ export default async function DashboardPage({
 
   if (!group || !memberCookie) return null;
 
-  const { simplifiedDebts } = await computeBalances(group.id);
+  const { currencies } = await computeBalances(group.id);
 
-  const youOwe = simplifiedDebts.filter((d) => d.fromId === memberCookie.memberId);
-  const owedToYou = simplifiedDebts.filter((d) => d.toId === memberCookie.memberId);
-  const oweSum = youOwe.reduce((s, d) => s + d.amount, 0);
-  const owedSum = owedToYou.reduce((s, d) => s + d.amount, 0);
-  const net = owedSum - oweSum;
+  // One pre-computed block per currency for the toggle. Currencies with no activity
+  // are dropped, except the default (SGD) which is always present so a blank group
+  // still shows its zeroed tiles and the toggle always has a default to open on.
+  // Nothing is ever summed across currencies — each block is this member's own
+  // figures in one currency.
+  const me = memberCookie.memberId;
+  const summary = currencies
+    .filter((c) => c.hasActivity || c.currency === DEFAULT_CURRENCY_CODE)
+    .map((c) => {
+      const oweSum = c.simplifiedDebts.filter((d) => d.fromId === me).reduce((s, d) => s + d.amount, 0);
+      const owedSum = c.simplifiedDebts.filter((d) => d.toId === me).reduce((s, d) => s + d.amount, 0);
+      return { currency: c.currency, oweSum, owedSum, net: owedSum - oweSum, debts: c.simplifiedDebts };
+    });
 
   const recentExpenses = await db.expense.findMany({
     where: { groupId: group.id },
-    include: { paidBy: true, shares: true, category: true },
+    include: { paidBy: true, shares: true, category: true, currency: true },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take: 5,
   });
 
   const recentSettlements = await db.settlement.findMany({
     where: { groupId: group.id },
-    include: { paidBy: true, receivedBy: true },
+    include: { paidBy: true, receivedBy: true, currency: true },
     orderBy: { createdAt: "desc" },
     take: 5,
   });
@@ -58,8 +68,8 @@ export default async function DashboardPage({
       return {
         type: "expense" as const,
         title: e.description,
-        subtitle: `${e.paidBy.name} paid ${formatCurrency(e.amount)} · split ${e.shares.length} ways`,
-        youTag: yourShare ? `You owe ${formatCurrency(yourShare.amount)}` : "Not involved",
+        subtitle: `${e.paidBy.name} paid ${formatCurrency(e.amount, e.currency.code)} · split ${e.shares.length} ways`,
+        youTag: yourShare ? `You owe ${formatCurrency(yourShare.amount, e.currency.code)}` : "Not involved",
         emoji: e.category?.emoji ?? "💰",
         time: e.date,
       };
@@ -70,11 +80,11 @@ export default async function DashboardPage({
       return {
         type: "settlement" as const,
         title: "Settlement",
-        subtitle: `${s.paidBy.name} paid ${s.receivedBy.name} ${formatCurrency(s.amount)}`,
+        subtitle: `${s.paidBy.name} paid ${s.receivedBy.name} ${formatCurrency(s.amount, s.currency.code)}`,
         youTag: isPayer
-          ? `You paid ${formatCurrency(s.amount)}`
+          ? `You paid ${formatCurrency(s.amount, s.currency.code)}`
           : isReceiver
-            ? `You received ${formatCurrency(s.amount)}`
+            ? `You received ${formatCurrency(s.amount, s.currency.code)}`
             : "",
         emoji: "💰",
         time: s.createdAt,
@@ -86,44 +96,7 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <ArrowDownRight size={16} className="text-rose-500" />You owe
-          </div>
-          <p className="text-xl font-bold text-rose-700">{formatCurrency(oweSum)}</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <ArrowUpRight size={16} className="text-emerald-700" />You&apos;re owed
-          </div>
-          <p className="text-xl font-bold text-emerald-700">{formatCurrency(owedSum)}</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <Minus size={16} className="text-slate-500" />Net
-          </div>
-          <p className={`text-xl font-bold ${net > 0 ? "text-emerald-700" : net < 0 ? "text-rose-700" : "text-slate-600"}`}>
-            {formatCurrency(net)}
-          </p>
-        </Card>
-      </div>
-
-      {simplifiedDebts.length > 0 && (
-        <Card className="divide-y divide-slate-100">
-          <div className="px-5 py-3">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Simplified Debts</h2>
-          </div>
-          {simplifiedDebts.map((d, i) => (
-            <div key={i} className="px-5 py-3 flex items-center gap-3 text-sm">
-              <span className="font-medium text-slate-900">{d.fromName}</span>
-              <span className="text-slate-500">pays</span>
-              <span className="font-medium text-slate-900">{d.toName}</span>
-              <span className="ml-auto font-semibold text-slate-700">{formatCurrency(d.amount)}</span>
-            </div>
-          ))}
-        </Card>
-      )}
+      <CurrencySummary summaries={summary} />
 
       <div>
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Recent Activity</h2>

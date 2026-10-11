@@ -43,7 +43,10 @@ export default async function AuthLayout({
         </Link>
         <UserMenu
           groupSlug={groupSlug}
-          members={group.members}
+          // The menu is read-only, so it is given names only — the member tokens no
+          // longer need to reach the client (they used to, for the "Switch Member"
+          // copy-link list).
+          members={group.members.map((m) => ({ id: m.id, name: m.name }))}
           currentMember={memberCookie}
         />
       </div>

@@ -14,36 +14,39 @@ person creates a group, everyone else joins through a link.
 Open the site and enter a **group name** and **your name**. That's the whole signup. You
 land in the group dashboard, signed in as yourself.
 
-### Invite everyone else
-Go to **Settings** and copy the invite link, or send each person their own personal link
-from the same page. Anyone who opens the group link and types their name is in.
+### Add everyone else
+Members are only ever created in **Settings → Add Member** (or when the group itself is
+created). From the same page you can copy a person's **personal link**, or copy the
+**group link** and let anyone already on the list pick their name to sign in. The join
+page lists the group's existing members — it never creates new ones.
 
 ### Logging in
 
-**There are no passwords and no accounts.** Your identity is a cookie set by your personal
-link, so "logging in" means opening a link:
+**There are no passwords and no accounts.** Your identity is a cookie; "logging in" means
+either opening your personal link or picking your name from the group link:
 
 | Situation | What to do |
 |---|---|
-| **First time** | Open the group's join link, type your name |
+| **First time** | Open the group link and pick your name from the list |
 | **Coming back** | Open **your personal link** — `/g/<group>/u/<token>` |
 | **New phone, or browser data cleared** | Same — your personal link |
-| **Shared device, different person** | Open *their* link, or use **Switch member** in the menu |
+| **Shared device, different person** | Open *their* personal link, or the group link and pick their name |
 
-**Treat your personal link as your password.** Anyone holding it *is* you. Send it
-privately, and keep it somewhere you'll find it again — there is no "forgot password" to
-fall back on.
+**Your personal link is a shortcut, not a password.** It signs you straight in with no
+name to pick, which is why it's worth keeping to yourself — anyone who opens it lands in
+your session. But it is not the only way in, and there is no password to remember: the
+group link signs you in too, as long as your name is on the list.
 
-One quirk to know about: if someone types a name that already exists in that group, the
-join page signs them in **as that existing person** rather than creating a second one.
-That's deliberate — it's how you get back in if you lose your link and remember your name.
+Your identity is chosen once and is never switched from inside the app. The header menu
+only *shows* who is in the group; it cannot sign you in as someone else. If your name
+isn't on the join page's list, ask whoever set the group up to add you.
 
 ### Day to day
 - **Add expense** — who paid, how much, split equally, by exact amounts, or by percentage
 - **Balances** — who is owed what
 - **Settle up** — the minimum set of transfers that clears every debt; record a payment
   and the balances update
-- **Settings** — invite links, members, categories
+- **Settings** — members and their personal links, categories, currencies
 
 ---
 

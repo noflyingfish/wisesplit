@@ -108,7 +108,7 @@ export default function LandingPage() {
           </button>
 
           <p className="text-center text-xs text-slate-500">
-            No passwords. Each member gets a unique link.
+            No passwords. Join with a link and pick your name.
           </p>
         </form>
       </div>

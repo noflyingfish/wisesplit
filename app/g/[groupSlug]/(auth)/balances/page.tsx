@@ -21,69 +21,58 @@ export default async function BalancesPage({
 
   if (!group || !memberCookie) return null;
 
-  const { members, simplifiedDebts } = await computeBalances(group.id);
-  const maxNet = Math.max(...members.map((x) => Math.abs(x.net)), 1);
+  const { currencies } = await computeBalances(group.id);
+  // One card per currency that has activity (an expense or a settlement); a
+  // currency with none is hidden rather than shown empty. Order is SGD first, then
+  // alphabetical (computeBalances already sorted it).
+  const active = currencies.filter((c) => c.hasActivity);
 
   return (
     <div className="space-y-6">
-      <Card>
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Who Pays Whom</h2>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {simplifiedDebts.length === 0 ? (
-            <div className="px-5 py-8 text-center">
-              <div className="text-3xl mb-2">🎉</div>
-              <p className="text-slate-500 font-medium">All settled up!</p>
-              <p className="text-sm text-slate-500 mt-1">No one owes anyone anything</p>
+      {active.length === 0 ? (
+        // No activity at all in any currency — a group with nothing recorded must
+        // still say so rather than render a blank page.
+        <Card>
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Who Pays Whom</h2>
+          </div>
+          <div className="px-5 py-8 text-center">
+            <div className="text-3xl mb-2">🎉</div>
+            <p className="text-slate-500 font-medium">All settled up!</p>
+            <p className="text-sm text-slate-500 mt-1">No one owes anyone anything</p>
+          </div>
+        </Card>
+      ) : (
+        active.map((c) => (
+          <Card key={c.currency}>
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Who Pays Whom ({c.currency})</h2>
             </div>
-          ) : (
-            simplifiedDebts.map((d, i) => (
-              <div key={i} className="px-5 py-4 flex items-center gap-3">
-                <span className={`font-medium text-sm ${d.fromId === memberCookie.memberId ? "text-rose-700" : "text-slate-700"}`}>
-                  {d.fromName}{d.fromId === memberCookie.memberId ? " (you)" : ""}
-                </span>
-                <ArrowRight size={16} className="text-slate-300 flex-shrink-0" />
-                <span className={`font-medium text-sm ${d.toId === memberCookie.memberId ? "text-emerald-700" : "text-slate-700"}`}>
-                  {d.toName}{d.toId === memberCookie.memberId ? " (you)" : ""}
-                </span>
-                <span className="ml-auto font-semibold text-sm text-slate-900">{formatCurrency(d.amount)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
-
-      <Card>
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">All Members</h2>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {members.sort((a, b) => b.net - a.net).map((m) => {
-            const isMe = m.memberId === memberCookie.memberId;
-            return (
-              <div key={m.memberId} className="px-5 py-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-sm font-medium ${isMe ? "text-emerald-700" : "text-slate-700"}`}>
-                    {m.memberName}{isMe ? " (you)" : ""}
-                  </span>
-                  <span className={`text-sm font-semibold ${m.net > 0.01 ? "text-emerald-700" : m.net < -0.01 ? "text-rose-700" : "text-slate-500"}`}>
-                    {m.net > 0.01 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
-                  </span>
+            <div className="divide-y divide-slate-100">
+              {c.simplifiedDebts.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <div className="text-3xl mb-2">🎉</div>
+                  <p className="text-slate-500 font-medium">All settled up!</p>
+                  <p className="text-sm text-slate-500 mt-1">No one owes anyone anything</p>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${m.net >= 0 ? "bg-emerald-400" : "bg-rose-400"}`}
-                    style={{ width: `${(Math.abs(m.net) / maxNet) * 100}%` }} />
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-slate-500">Paid {formatCurrency(m.paid)}</span>
-                  <span className="text-xs text-slate-500">Owes {formatCurrency(m.owes)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+              ) : (
+                c.simplifiedDebts.map((d, i) => (
+                  <div key={i} className="px-5 py-4 flex items-center gap-3">
+                    <span className={`font-medium text-sm ${d.fromId === memberCookie.memberId ? "text-rose-700" : "text-slate-700"}`}>
+                      {d.fromName}{d.fromId === memberCookie.memberId ? " (you)" : ""}
+                    </span>
+                    <ArrowRight size={16} className="text-slate-300 flex-shrink-0" />
+                    <span className={`font-medium text-sm ${d.toId === memberCookie.memberId ? "text-emerald-700" : "text-slate-700"}`}>
+                      {d.toName}{d.toId === memberCookie.memberId ? " (you)" : ""}
+                    </span>
+                    <span className="ml-auto font-semibold text-sm text-slate-900">{formatCurrency(d.amount, c.currency)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        ))
+      )}
 
       <Link href={`/g/${groupSlug}/settle/new`}
         className="flex items-center justify-center gap-2 w-full py-3.5 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm">

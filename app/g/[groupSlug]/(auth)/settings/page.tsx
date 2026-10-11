@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
+import { DEFAULT_CURRENCY_CODE, sortCurrencyCodes } from "@/lib/currencies";
 import { Card } from "@/components/Card";
 import { MemberManager } from "./_components/MemberManager";
 import { CategoryManager } from "./_components/CategoryManager";
+import { CurrencyManager } from "./_components/CurrencyManager";
 
 export default async function SettingsPage({
   params,
@@ -16,10 +18,25 @@ export default async function SettingsPage({
 
   const group = await db.group.findUnique({
     where: { slug: groupSlug },
-    include: { members: { orderBy: { createdAt: "asc" } }, categories: { orderBy: { name: "asc" } } },
+    include: {
+      members: { orderBy: { createdAt: "asc" } },
+      categories: { orderBy: { name: "asc" } },
+      currencies: { include: { _count: { select: { expenses: true, settlements: true } } } },
+    },
   });
 
   if (!group || !memberCookie) return null;
+
+  // SGD first, then alphabetical — the one ordering every currency list uses.
+  const currencies = sortCurrencyCodes(group.currencies.map((c) => c.code)).map((code) => {
+    const row = group.currencies.find((c) => c.code === code)!;
+    return {
+      id: row.id,
+      code: row.code,
+      inUse: row._count.expenses + row._count.settlements > 0,
+      isDefault: code === DEFAULT_CURRENCY_CODE,
+    };
+  });
 
   // The floating "+" is fixed to the bottom-right corner (`bottom-6 right-6`), so at
   // 375 px it floats over the right ~80 px of the column. Every card here is a list of
@@ -53,6 +70,13 @@ export default async function SettingsPage({
         </div>
         <CategoryManager groupSlug={groupSlug}
           categories={group.categories.map((c) => ({ id: c.id, emoji: c.emoji, name: c.name }))} />
+      </Card>
+
+      <Card className="max-lg:mr-16">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Currencies ({currencies.length})</h2>
+        </div>
+        <CurrencyManager groupSlug={groupSlug} currencies={currencies} />
       </Card>
 
       <Link href={`/g/${groupSlug}/expenses/new`}

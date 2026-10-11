@@ -69,8 +69,27 @@ CREATE TABLE IF NOT EXISTS `Category` (
 
 
 -- ---------------------------------------------------------------------------
+-- Currency
+--   A currency this group has enabled (ISO 4217 code from lib/currencies.ts).
+--   UNIQUE(groupId, code) mirrors Category. SGD is seeded into every new group
+--   and is never deletable; any other code only while unused.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Currency` (
+  `id`      VARCHAR(191) NOT NULL,
+  `code`    VARCHAR(191) NOT NULL,
+  `groupId` VARCHAR(191) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `Currency_groupId_code_key` (`groupId`, `code`),
+  CONSTRAINT `Currency_groupId_fkey`
+    FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+
+-- ---------------------------------------------------------------------------
 -- Expense
 --   `amount` is DECIMAL(12,2) — exact decimal, never a float.
+--   `currencyId` is REQUIRED and RESTRICT (an in-use currency cannot be deleted).
 --   `splitType` is NULLABLE ON PURPOSE: NULL means "unknown — fall back to the
 --   share-shape heuristic", NOT "equal". Do not add a default.
 -- ---------------------------------------------------------------------------
@@ -81,6 +100,7 @@ CREATE TABLE IF NOT EXISTS `Expense` (
   `paidById`    VARCHAR(191)  NOT NULL,
   `groupId`     VARCHAR(191)  NOT NULL,
   `categoryId`  VARCHAR(191)  NULL,
+  `currencyId`  VARCHAR(191)  NOT NULL,
   `date`        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `createdAt`   DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `splitType`   VARCHAR(191)  NULL,
@@ -88,6 +108,7 @@ CREATE TABLE IF NOT EXISTS `Expense` (
   KEY `Expense_groupId_createdAt_idx` (`groupId`, `createdAt`),
   KEY `Expense_paidById_idx` (`paidById`),
   KEY `Expense_categoryId_idx` (`categoryId`),
+  KEY `Expense_currencyId_idx` (`currencyId`),
   CONSTRAINT `Expense_groupId_fkey`
     FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -96,7 +117,10 @@ CREATE TABLE IF NOT EXISTS `Expense` (
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Expense_categoryId_fkey`
     FOREIGN KEY (`categoryId`) REFERENCES `Category` (`id`)
-    ON DELETE SET NULL ON UPDATE CASCADE
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `Expense_currencyId_fkey`
+    FOREIGN KEY (`currencyId`) REFERENCES `Currency` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 
@@ -134,12 +158,14 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
   `groupId`      VARCHAR(191)  NOT NULL,
   `paidById`     VARCHAR(191)  NOT NULL,
   `receivedById` VARCHAR(191)  NOT NULL,
+  `currencyId`   VARCHAR(191)  NOT NULL,
   `amount`       DECIMAL(12,2) NOT NULL,
   `createdAt`    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `Settlement_groupId_createdAt_idx` (`groupId`, `createdAt`),
   KEY `Settlement_paidById_idx` (`paidById`),
   KEY `Settlement_receivedById_idx` (`receivedById`),
+  KEY `Settlement_currencyId_idx` (`currencyId`),
   CONSTRAINT `Settlement_groupId_fkey`
     FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -148,13 +174,16 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Settlement_receivedById_fkey`
     FOREIGN KEY (`receivedById`) REFERENCES `GroupMember` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `Settlement_currencyId_fkey`
+    FOREIGN KEY (`currencyId`) REFERENCES `Currency` (`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 
 -- ============================================================================
 -- VERIFICATION — runs last and prints what you just created.
--- Expect six rows, every one utf8mb4_bin, and the four money columns below.
+-- Expect seven rows, every one utf8mb4_bin, and the four money columns below.
 -- ============================================================================
 SELECT TABLE_NAME, ENGINE, TABLE_COLLATION
 FROM information_schema.TABLES

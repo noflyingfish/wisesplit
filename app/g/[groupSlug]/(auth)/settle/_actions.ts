@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { toDecimal } from "@/lib/money";
+import { isCurrencyCode } from "@/lib/currencies";
 
 export async function createSettlement(
   groupSlug: string,
@@ -18,16 +19,18 @@ export async function createSettlement(
   const paidById = formData.get("paidById") as string;
   const receivedById = formData.get("receivedById") as string;
   const amount = parseFloat(formData.get("amount") as string);
+  const currencyCode = formData.get("currency") as string;
 
   if (!paidById || !receivedById) return { error: "Select both people" };
   if (paidById === receivedById) return { error: "Cannot settle with yourself" };
   if (isNaN(amount) || amount <= 0) return { error: "Amount must be positive" };
+  if (!isCurrencyCode(currencyCode)) return { error: "Please choose a currency" };
 
   // Both people must belong to *this* group. Checked here so a bad id produces a
   // clear message instead of a raw foreign-key failure from the database.
   const group = await db.group.findUnique({
     where: { slug: groupSlug },
-    select: { id: true, members: { select: { id: true } } },
+    select: { id: true, members: { select: { id: true } }, currencies: { select: { id: true, code: true } } },
   });
   if (!group) return { error: "This group no longer exists" };
 
@@ -35,6 +38,12 @@ export async function createSettlement(
   if (!memberIds.has(paidById) || !memberIds.has(receivedById)) {
     return { error: "Both people must be members of this group" };
   }
+
+  // The settlement is denominated in one of the group's own currencies. Validated
+  // server-side, per group, so a code invented by the client is refused and a
+  // TWD debt is never cleared as SGD.
+  const currency = group.currencies.find((c) => c.code === currencyCode);
+  if (!currency) return { error: "That currency is not configured for this group" };
 
   try {
     // Relation connects throughout. Mixing Prisma's *unchecked* scalar FKs
@@ -49,6 +58,7 @@ export async function createSettlement(
         paidBy: { connect: { id: paidById } },
         receivedBy: { connect: { id: receivedById } },
         group: { connect: { slug: groupSlug } },
+        currency: { connect: { id: currency.id } },
       },
     });
   } catch (error) {

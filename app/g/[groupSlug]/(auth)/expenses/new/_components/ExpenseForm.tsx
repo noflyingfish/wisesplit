@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ArrowLeft, Check } from "lucide-react";
 import { createExpense, updateExpense } from "@/app/g/[groupSlug]/(auth)/expenses/_actions";
-import { todayISODate } from "@/lib/utils";
+import { formatCurrency, todayISODate } from "@/lib/utils";
+import { DEFAULT_CURRENCY_CODE, currencySymbol } from "@/lib/currencies";
 import type { SplitType } from "@/lib/expense-shares";
 import Link from "next/link";
 
@@ -115,13 +116,15 @@ type EditExpense = {
   date: string;
   paidById: string;
   categoryId: string | null;
+  /** The stored ISO code. Currency is editable on an existing expense. */
+  currency: string;
   splitType: SplitType;
   shares: { memberId: string; amount: number }[];
   /** The stored percentages, for a "percentage" expense only. */
   percentages: { memberId: string; percentage: number }[] | null;
 };
 
-export function ExpenseForm({ groupSlug, members, categories, editExpense, defaultDate, currentMemberId }: { groupSlug: string; members: Member[]; categories: Category[]; editExpense?: EditExpense; defaultDate?: string; currentMemberId?: string }) {
+export function ExpenseForm({ groupSlug, members, categories, currencies, editExpense, defaultDate, currentMemberId }: { groupSlug: string; members: Member[]; categories: Category[]; currencies: string[]; editExpense?: EditExpense; defaultDate?: string; currentMemberId?: string }) {
   const isEdit = Boolean(editExpense);
   const [description, setDescription] = useState(editExpense?.description ?? "");
   const [amount, setAmount] = useState(editExpense ? String(editExpense.amount) : "");
@@ -143,6 +146,13 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
       ? currentMemberId
       : members[0]?.id ?? "");
   const [paidById, setPaidById] = useState(defaultPayerId);
+  // An edit keeps the currency the expense was stored with. A new expense defaults
+  // to the group's default currency (SGD). The picker lists only the group's own
+  // currencies, and the action re-checks membership server-side.
+  const [currency, setCurrency] = useState(
+    editExpense?.currency ??
+      (currencies.includes(DEFAULT_CURRENCY_CODE) ? DEFAULT_CURRENCY_CODE : currencies[0])
+  );
   const [categoryId, setCategoryId] = useState(editExpense?.categoryId ?? "");
   const [splitType, setSplitType] = useState<SplitType>(editExpense?.splitType ?? "equal");
   const [involvedIds, setInvolvedIds] = useState<string[]>(
@@ -249,7 +259,7 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
     // The same balance rule the Save button uses. Only the balance: a share with a
     // third decimal place is the SERVER's rule (see `sharesSumToAmount`), and it must
     // be able to refuse it with its own message rather than be pre-empted here.
-    if (splitType === "unequal" && !isBalanced) { setError(`Shares must add up to ${amountNum.toFixed(2)}`); return; }
+    if (splitType === "unequal" && !isBalanced) { setError(`Shares must add up to ${formatCurrency(amountNum, currency)}`); return; }
     if (splitType === "percentage" && !pctBalanced) { setError("Percentages must add up to 100%"); return; }
     if (splitType === "percentage" && !hasPositivePct) { setError("At least one member must have a percentage above 0%"); return; }
 
@@ -261,6 +271,7 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
     formData.append("date", date);
     formData.append("paidById", paidById);
     formData.append("categoryId", categoryId);
+    formData.append("currency", currency);
     formData.append("splitType", splitType);
     formData.append("shares", JSON.stringify(
       splitType === "equal"
@@ -352,19 +363,30 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="block text-sm font-medium text-slate-700">Amount</label>
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
+          {/* The prefix follows the selected currency's symbol instead of a hardcoded
+              "$"; it is a flex prefix rather than an absolutely positioned glyph so a
+              multi-character symbol (NT$, SGD) does not overlap the digits. */}
+          <div className="flex items-center rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-700 transition-all">
+            <span className="pl-4 pr-1 text-slate-500 font-medium text-sm">{currencySymbol(currency)}</span>
             <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required
-              className="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all" />
+              className="flex-1 min-w-0 px-2 pr-4 py-3 rounded-xl bg-transparent text-slate-900 placeholder:text-slate-400 focus:outline-none" />
           </div>
         </div>
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700">Paid by</label>
-          <select value={paidById} onChange={(e) => setPaidById(e.target.value)}
+          <label className="block text-sm font-medium text-slate-700">Currency</label>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)}
             className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all">
-            {members.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
+            {currencies.map((c) => (<option key={c} value={c}>{c}</option>))}
           </select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">Paid by</label>
+        <select value={paidById} onChange={(e) => setPaidById(e.target.value)}
+          className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all">
+          {members.map((m) => (<option key={m.id} value={m.id}>{m.name}</option>))}
+        </select>
       </div>
 
       <div className="space-y-2">
@@ -408,11 +430,11 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
                 ) : null}
                 <span className="flex-1 text-sm font-medium text-slate-700">{m.name}</span>
                 {splitType === "equal" ? (
-                  <span className="text-sm text-slate-500">{isInvolved && amountNum ? `$${equalShare.toFixed(2)}` : "—"}</span>
+                  <span className="text-sm text-slate-500">{isInvolved && amountNum ? formatCurrency(equalShare, currency) : "—"}</span>
                 ) : splitType === "percentage" ? (
                   <div className="flex items-center gap-2">
                     {pctBalanced && amountNum > 0 && (
-                      <span className="text-xs text-slate-500">${pctDollarAmount.toFixed(2)}</span>
+                      <span className="text-xs text-slate-500">{formatCurrency(pctDollarAmount, currency)}</span>
                     )}
                     <div className="relative">
                       <input type="text" inputMode="numeric" pattern="[0-9]*" value={percentages.find((p) => p.memberId === m.id)?.pct || ""}
@@ -433,8 +455,8 @@ export function ExpenseForm({ groupSlug, members, categories, editExpense, defau
             <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
               <span className="text-sm font-semibold text-slate-700">Total</span>
               <span className={`text-sm font-bold ${isBalanced ? "text-emerald-700" : "text-rose-700"}`}>
-                ${shareTotal.toFixed(2)}
-                {!isBalanced && amountNum > 0 && <span className="text-xs font-normal ml-1">(should be ${amountNum.toFixed(2)})</span>}
+                {formatCurrency(shareTotal, currency)}
+                {!isBalanced && amountNum > 0 && <span className="text-xs font-normal ml-1">(should be {formatCurrency(amountNum, currency)})</span>}
               </span>
             </div>
           )}

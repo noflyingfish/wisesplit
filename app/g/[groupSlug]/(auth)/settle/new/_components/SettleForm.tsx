@@ -5,14 +5,20 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 import { createSettlement } from "@/app/g/[groupSlug]/(auth)/settle/_actions";
 import { formatCurrency } from "@/lib/utils";
+import { DEFAULT_CURRENCY_CODE, currencySymbol } from "@/lib/currencies";
 
 type Member = { id: string; name: string };
-type DebtSuggestion = { fromId: string; fromName: string; toId: string; toName: string; amount: number };
+type DebtSuggestion = { currency: string; fromId: string; fromName: string; toId: string; toName: string; amount: number };
 
-export function SettleForm({ groupSlug, members, currentMemberId, suggestions }: { groupSlug: string; members: Member[]; currentMemberId: string; suggestions: DebtSuggestion[] }) {
+export function SettleForm({ groupSlug, members, currencies, currentMemberId, suggestions }: { groupSlug: string; members: Member[]; currencies: string[]; currentMemberId: string; suggestions: DebtSuggestion[] }) {
   const [paidById, setPaidById] = useState(currentMemberId);
   const [receivedById, setReceivedById] = useState("");
   const [amount, setAmount] = useState("");
+  // The settlement is denominated in one of the group's currencies. Defaults to the
+  // group's default (SGD); a suggested debt sets it to the debt's own currency.
+  const [currency, setCurrency] = useState(
+    currencies.includes(DEFAULT_CURRENCY_CODE) ? DEFAULT_CURRENCY_CODE : currencies[0]
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -35,6 +41,7 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
     formData.append("paidById", paidById);
     formData.append("receivedById", receivedById);
     formData.append("amount", amountNum.toString());
+    formData.append("currency", currency);
     // The action redirects to /balances itself on success, so this promise only ever
     // carries an error. A client-side push here was unreliable (measured on the
     // expense form: 7 of 8 navigations lost).
@@ -53,7 +60,26 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
     setSaved(true);
   }
 
-  function applySuggestion(s: DebtSuggestion) { setPaidById(s.fromId); setReceivedById(s.toId); setAmount(s.amount.toString()); }
+  // Applying a suggestion must set the currency too — otherwise a TWD debt would be
+  // cleared as SGD.
+  function applySuggestion(s: DebtSuggestion) {
+    setPaidById(s.fromId);
+    setReceivedById(s.toId);
+    setAmount(s.amount.toString());
+    setCurrency(s.currency);
+  }
+
+  // Suggestions arrive ordered SGD-first then alphabetical (from computeBalances);
+  // grouping by first-seen currency preserves that order.
+  const suggestionGroups = suggestions.reduce<{ currency: string; items: DebtSuggestion[] }[]>(
+    (acc, s) => {
+      const group = acc.find((g) => g.currency === s.currency);
+      if (group) group.items.push(s);
+      else acc.push({ currency: s.currency, items: [s] });
+      return acc;
+    },
+    []
+  );
 
   // `noValidate` for the same reason as the expense form: the amount input carries
   // `min="0.01"`, and the browser's native bubble would fire first and make the app's
@@ -67,20 +93,23 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
           (and the QA harness's `[role="alert"]` detector) could not see a refusal. */}
       {error && <div role="alert" className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">{error}</div>}
 
-      {suggestions.length > 0 && (
-        <div className="space-y-2">
+      {suggestionGroups.length > 0 && (
+        <div className="space-y-3">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Suggested</p>
-          <div className="space-y-2">
-            {suggestions.map((s, i) => (
-              <button key={i} type="button" onClick={() => applySuggestion(s)}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 transition-colors text-left">
-                <span className="font-medium text-sm text-slate-700">{s.fromName}{s.fromId === currentMemberId ? " (you)" : ""}</span>
-                <ArrowRight size={14} className="text-slate-300" />
-                <span className="font-medium text-sm text-slate-700">{s.toName}{s.toId === currentMemberId ? " (you)" : ""}</span>
-                <span className="ml-auto font-semibold text-sm text-emerald-700">{formatCurrency(s.amount)}</span>
-              </button>
-            ))}
-          </div>
+          {suggestionGroups.map((group) => (
+            <div key={group.currency} className="space-y-2">
+              <p className="text-[11px] font-semibold text-slate-400 tracking-wider">{group.currency}</p>
+              {group.items.map((s, i) => (
+                <button key={i} type="button" onClick={() => applySuggestion(s)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 transition-colors text-left">
+                  <span className="font-medium text-sm text-slate-700">{s.fromName}{s.fromId === currentMemberId ? " (you)" : ""}</span>
+                  <ArrowRight size={14} className="text-slate-300" />
+                  <span className="font-medium text-sm text-slate-700">{s.toName}{s.toId === currentMemberId ? " (you)" : ""}</span>
+                  <span className="ml-auto font-semibold text-sm text-emerald-700">{formatCurrency(s.amount, s.currency)}</span>
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -102,12 +131,24 @@ export function SettleForm({ groupSlug, members, currentMemberId, suggestions }:
         </select>
       </div>
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">Amount</label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">$</span>
-          <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required
-            className="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all" />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Amount</label>
+          {/* The prefix follows the selected currency's symbol instead of a hardcoded
+              "$"; a flex prefix rather than an absolutely positioned glyph so a
+              multi-character symbol (NT$, SGD) does not overlap the digits. */}
+          <div className="flex items-center rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-700 transition-all">
+            <span className="pl-4 pr-1 text-slate-500 font-medium text-sm">{currencySymbol(currency)}</span>
+            <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required
+              className="flex-1 min-w-0 px-2 pr-4 py-3 rounded-xl bg-transparent text-slate-900 placeholder:text-slate-400 focus:outline-none" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Currency</label>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-700 transition-all">
+            {currencies.map((c) => (<option key={c} value={c}>{c}</option>))}
+          </select>
         </div>
       </div>
 

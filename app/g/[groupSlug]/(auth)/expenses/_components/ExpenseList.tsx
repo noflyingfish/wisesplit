@@ -19,6 +19,8 @@ import type { Expense, GroupMember, Category } from "@prisma/client";
  */
 export type ExpenseRow = Omit<Expense, "amount" | "shares"> & {
   amount: number;
+  /** The expense's ISO currency code, used for every amount on this row. */
+  currency: string;
   paidBy: GroupMember;
   shares: { memberId: string; amount: number; percentage: number | null; member: GroupMember }[];
   category: Category | null;
@@ -69,11 +71,11 @@ export function ExpenseList({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-slate-900 truncate">{expense.description}</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {expense.paidBy.name} paid · {expense.paidById === currentMemberId ? "You paid" : yourShare ? `You owe ${formatCurrency(yourShare.amount)}` : "Not involved"}
+                  {expense.paidBy.name} paid · {expense.paidById === currentMemberId ? "You paid" : yourShare ? `You owe ${formatCurrency(yourShare.amount, expense.currency)}` : "Not involved"}
                 </p>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(expense.amount)}</p>
+                <p className="text-sm font-semibold text-slate-900">{formatCurrency(expense.amount, expense.currency)}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{formatDate(expense.date)}</p>
               </div>
               {isExpanded ? <ChevronUp size={16} className="text-slate-500 flex-shrink-0" /> : <ChevronDown size={16} className="text-slate-500 flex-shrink-0" />}
@@ -93,7 +95,7 @@ export function ExpenseList({
                         {share.member.name}{share.memberId === currentMemberId ? " (you)" : ""}
                       </span>
                       <span className={`font-medium ${share.memberId === currentMemberId ? "text-rose-700" : "text-slate-700"}`}>
-                        {formatCurrency(share.amount)}
+                        {formatCurrency(share.amount, expense.currency)}
                       </span>
                     </div>
                   ))}

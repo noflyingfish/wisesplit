@@ -103,14 +103,14 @@ export function MemberManager({ groupSlug, members, currentMemberId }: { groupSl
 
       <div className="px-5 py-3.5 border-t border-slate-100 flex items-center gap-3">
         <Share2 size={16} className="text-slate-500 flex-shrink-0" />
-        <span className="text-sm text-slate-500 flex-1">Share this group link to invite new members</span>
-        <button onClick={copyInviteLink} aria-label="Copy invite link"
+        <span className="text-sm text-slate-500 flex-1">Share this link so members can sign in</span>
+        <button onClick={copyInviteLink} aria-label="Copy group link"
           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors">
           {inviteCopied ? <Check size={12} className="text-emerald-700" /> : <Copy size={12} />}
           {/* Same `hidden sm:inline` as the member rows above: at 375 px the label is
-              dropped so the button stays a narrow icon and the "Share this group link…"
+              dropped so the button stays a narrow icon and the "Share this link…"
               copy keeps its room. The icon already carries the state (Copy / Check). */}
-          <span className="hidden sm:inline">{inviteCopied ? "Copied" : "Copy invite link"}</span>
+          <span className="hidden sm:inline">{inviteCopied ? "Copied" : "Copy group link"}</span>
         </button>
       </div>
     </div>

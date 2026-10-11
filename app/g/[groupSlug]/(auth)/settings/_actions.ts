@@ -5,6 +5,18 @@ import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { generateToken } from "@/lib/utils";
 import { textLengthError } from "@/lib/text-limits";
+import { DEFAULT_CURRENCY_CODE, isCurrencyCode } from "@/lib/currencies";
+
+/**
+ * Every surface a currency change can affect: the settings list, the expense list,
+ * the two forms whose currency pickers read the group's currencies, and the
+ * dashboard / balances / settle views whose per-currency grouping depends on them.
+ */
+function revalidateCurrencySurfaces(groupSlug: string) {
+  for (const path of ["settings", "expenses", "expenses/new", "dashboard", "balances", "settle/new"]) {
+    revalidatePath(`/g/${groupSlug}/${path}`);
+  }
+}
 
 export async function addMember(
   groupSlug: string,
@@ -82,5 +94,75 @@ export async function deleteCategory(
   await db.category.delete({ where: { id: categoryId } });
   revalidatePath(`/g/${groupSlug}/settings`);
   revalidatePath(`/g/${groupSlug}/expenses`);
+  return {};
+}
+
+export async function addCurrency(
+  groupSlug: string,
+  formData: FormData
+): Promise<{ error?: string }> {
+  const memberCookie = await getMemberCookie();
+  if (!memberCookie || memberCookie.groupSlug !== groupSlug) {
+    return { error: "Not authenticated" };
+  }
+
+  const code = (formData.get("code") as string)?.trim();
+  // The dropdown only offers codes from the master list, but the action is a
+  // network endpoint — validate the code against the list on its own.
+  if (!isCurrencyCode(code)) return { error: "Choose a currency from the list" };
+
+  const group = await db.group.findUnique({ where: { slug: groupSlug } });
+  if (!group) return { error: "Group not found" };
+
+  // The server refuses a duplicate. `Currency` also carries UNIQUE(groupId, code)
+  // as a backstop, but the message here is the one the user reads.
+  const existing = await db.currency.findFirst({ where: { groupId: group.id, code } });
+  if (existing) return { error: "That currency is already added" };
+
+  await db.currency.create({ data: { code, groupId: group.id } });
+  revalidateCurrencySurfaces(groupSlug);
+  return {};
+}
+
+export async function deleteCurrency(
+  groupSlug: string,
+  currencyId: string
+): Promise<{ error?: string }> {
+  const memberCookie = await getMemberCookie();
+  if (!memberCookie || memberCookie.groupSlug !== groupSlug) {
+    return { error: "Not authenticated" };
+  }
+
+  // Resolve the group first, and look the currency up WITHIN it, so an id from
+  // another group cannot be deleted through this action.
+  const group = await db.group.findUnique({ where: { slug: groupSlug }, select: { id: true } });
+  if (!group) return { error: "Group not found" };
+
+  const currency = await db.currency.findFirst({
+    where: { id: currencyId, groupId: group.id },
+  });
+  if (!currency) return { error: "Currency not found" };
+
+  // SGD is seeded into every group and is the default everywhere — it can never
+  // be removed.
+  if (currency.code === DEFAULT_CURRENCY_CODE) {
+    return { error: `${DEFAULT_CURRENCY_CODE} is the default currency and cannot be deleted` };
+  }
+
+  // "In use" means referenced by an expense OR a settlement — checking only
+  // `Expense` (the obvious implementation) would let a currency that only clears a
+  // settlement be deleted and orphan that settlement's amount.
+  const [expenseCount, settlementCount] = await Promise.all([
+    db.expense.count({ where: { currencyId: currency.id } }),
+    db.settlement.count({ where: { currencyId: currency.id } }),
+  ]);
+  if (expenseCount > 0 || settlementCount > 0) {
+    return {
+      error: `${currency.code} is in use and cannot be deleted. Remove or change the ${expenseCount > 0 ? "expenses" : "settlements"} that use it first.`,
+    };
+  }
+
+  await db.currency.delete({ where: { id: currency.id } });
+  revalidateCurrencySurfaces(groupSlug);
   return {};
 }
