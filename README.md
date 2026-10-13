@@ -42,11 +42,16 @@ only *shows* who is in the group; it cannot sign you in as someone else. If your
 isn't on the join page's list, ask whoever set the group up to add you.
 
 ### Day to day
-- **Add expense** — who paid, how much, split equally, by exact amounts, or by percentage
+- **Add expense** — who paid, how much, in which currency, split equally, by exact
+  amounts, or by percentage
 - **Balances** — who is owed what
 - **Settle up** — the minimum set of transfers that clears every debt; record a payment
   and the balances update
 - **Settings** — members and their personal links, categories, currencies
+
+A group can use several currencies at once, and **everything is per currency**: a TWD
+debt is never cancelled by an SGD one, and balances and settle-up are worked out
+separately for each.
 
 ---
 
