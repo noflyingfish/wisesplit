@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { currencyFractionDigits } from "@/lib/currencies";
 
 export function generateSlug(name: string): string {
   return name
@@ -34,14 +35,19 @@ export function generateToken(): string {
  */
 export type CurrencyValue = number | string | { toString(): string };
 
-export function formatCurrency(amount: CurrencyValue): string {
+export function formatCurrency(amount: CurrencyValue, currency: string): string {
   const value = typeof amount === "number" ? amount : Number(amount);
   const abs = Math.abs(value);
+  // The fraction digits follow the currency's minor units, NOT a forced 2dp:
+  // `Intl` renders JPY/KRW/VND/IDR with none (`¥1,000`) and the rest with two
+  // (`SGD 1,234.50`). Storage stays DECIMAL(12,2), so a fractional JPY rounds
+  // here at display only. See `lib/currencies.ts`.
+  const digits = currencyFractionDigits(currency);
   const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    currency,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   }).format(abs);
   return value < 0 ? `-${formatted}` : formatted;
 }

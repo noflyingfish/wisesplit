@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { storedDateToInputValue } from "@/lib/utils";
+import { sortCurrencyCodes } from "@/lib/currencies";
 import { isSplitType, type SplitType } from "@/lib/expense-shares";
 import { isDecimal, toNumber } from "@/lib/money";
 import { ExpenseForm } from "../../new/_components/ExpenseForm";
@@ -16,14 +17,14 @@ export default async function EditExpensePage({
 
   const group = await db.group.findUnique({
     where: { slug: groupSlug },
-    include: { members: true, categories: true },
+    include: { members: true, categories: true, currencies: true },
   });
 
   if (!group || !memberCookie) return null;
 
   const expense = await db.expense.findUnique({
     where: { id: expenseId },
-    include: { shares: true },
+    include: { shares: true, currency: true },
   });
 
   if (!expense || expense.groupId !== group.id) {
@@ -75,6 +76,7 @@ export default async function EditExpensePage({
       groupSlug={groupSlug}
       members={group.members.map((m) => ({ id: m.id, name: m.name }))}
       categories={group.categories.map((c) => ({ id: c.id, emoji: c.emoji, name: c.name }))}
+      currencies={sortCurrencyCodes(group.currencies.map((c) => c.code))}
       // Passed for the same reason as the new-expense page. On an edit it changes
       // nothing: `editExpense.paidById` takes precedence, so the stored payer is
       // shown unchanged.
@@ -89,6 +91,7 @@ export default async function EditExpensePage({
         date: storedDateToInputValue(expense.date),
         paidById: expense.paidById,
         categoryId: expense.categoryId,
+        currency: expense.currency.code,
         splitType,
         shares: expense.shares.map((s) => ({ memberId: s.memberId, amount: toNumber(s.amount) })),
         percentages: splitType === "percentage" ? storedPercentages : null,

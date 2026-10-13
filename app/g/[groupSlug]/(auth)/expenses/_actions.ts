@@ -6,7 +6,28 @@ import { db } from "@/lib/db";
 import { getMemberCookie } from "@/lib/auth";
 import { isSplitType, resolveShares, type ResolvedShare } from "@/lib/expense-shares";
 import { toDecimal, type Money } from "@/lib/money";
+import { isCurrencyCode } from "@/lib/currencies";
 import { textLengthError } from "@/lib/text-limits";
+
+/**
+ * Resolves a currency code to the id of THIS group's currency row, refusing a code
+ * the group has not configured. The check is server-side and per-group: the form
+ * only ever offers the group's own currencies, but the action is a network endpoint
+ * and the server check has to be correct on its own.
+ */
+async function resolveGroupCurrencyId(
+  groupSlug: string,
+  code: string
+): Promise<{ id: string } | { error: string }> {
+  const group = await db.group.findUnique({
+    where: { slug: groupSlug },
+    select: { currencies: { select: { id: true, code: true } } },
+  });
+  if (!group) return { error: "This group no longer exists" };
+  const row = group.currencies.find((c) => c.code === code);
+  if (!row) return { error: "That currency is not configured for this group" };
+  return { id: row.id };
+}
 
 /**
  * Validates the shared fields and turns the user's split input into shares.
@@ -14,12 +35,13 @@ import { textLengthError } from "@/lib/text-limits";
  */
 function parseExpenseForm(
   formData: FormData
-): { error: string } | { amount: Money; paidById: string; date: Date; categoryId: string; description: string; splitType: "equal" | "unequal" | "percentage"; shares: ResolvedShare[] } {
+): { error: string } | { amount: Money; paidById: string; date: Date; categoryId: string; currency: string; description: string; splitType: "equal" | "unequal" | "percentage"; shares: ResolvedShare[] } {
   const description = formData.get("description") as string;
   const rawAmount = formData.get("amount") as string;
   const amount = parseFloat(rawAmount);
   const paidById = formData.get("paidById") as string;
   const categoryId = formData.get("categoryId") as string;
+  const currency = formData.get("currency") as string;
   const dateStr = formData.get("date") as string;
   const splitType = formData.get("splitType");
 
@@ -35,6 +57,7 @@ function parseExpenseForm(
   // what the money columns now store.
   if (isNaN(amount) || amount <= 0) return { error: "Amount must be positive" };
   if (!paidById) return { error: "Payer is required" };
+  if (!isCurrencyCode(currency)) return { error: "Please choose a currency" };
   if (!dateStr?.trim()) return { error: "Date is required" };
   if (!isSplitType(splitType)) return { error: "Unknown split type" };
 
@@ -49,6 +72,7 @@ function parseExpenseForm(
     paidById,
     date,
     categoryId,
+    currency,
     description,
     splitType,
     shares: resolved.shares,
@@ -68,6 +92,9 @@ export async function createExpense(
   if ("error" in parsed) return { error: parsed.error };
   const { amount, paidById, date, categoryId, description, splitType, shares } = parsed;
 
+  const currency = await resolveGroupCurrencyId(groupSlug, parsed.currency);
+  if ("error" in currency) return { error: currency.error };
+
   try {
     await db.expense.create({
       data: {
@@ -80,6 +107,7 @@ export async function createExpense(
         splitType,
         paidBy: { connect: { id: paidById } },
         group: { connect: { slug: groupSlug } },
+        currency: { connect: { id: currency.id } },
         ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
         shares: {
           create: shares.map((s) => ({
@@ -130,6 +158,9 @@ export async function updateExpense(
   if ("error" in parsed) return { error: parsed.error };
   const { amount, paidById, date, categoryId, description, splitType, shares } = parsed;
 
+  const currency = await resolveGroupCurrencyId(groupSlug, parsed.currency);
+  if ("error" in currency) return { error: currency.error };
+
   try {
     await db.$transaction(async (tx) => {
       await tx.expenseShare.deleteMany({ where: { expenseId } });
@@ -141,6 +172,7 @@ export async function updateExpense(
           date,
           splitType,
           paidBy: { connect: { id: paidById } },
+          currency: { connect: { id: currency.id } },
           ...(categoryId ? { category: { connect: { id: categoryId } } } : {}),
           shares: {
             create: shares.map((s) => ({

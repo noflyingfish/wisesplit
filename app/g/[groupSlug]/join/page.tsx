@@ -11,6 +11,8 @@ export default async function JoinPage({
 
   const group = await db.group.findUnique({
     where: { slug: groupSlug },
+    // Alphabetical by member name — the picker's one ordering (locked decision).
+    include: { members: { orderBy: { name: "asc" } } },
   });
 
   if (!group) {
@@ -36,5 +38,11 @@ export default async function JoinPage({
     );
   }
 
-  return <JoinForm groupSlug={groupSlug} groupName={group.name} />;
+  return (
+    <JoinForm
+      groupSlug={groupSlug}
+      groupName={group.name}
+      members={group.members.map((m) => ({ id: m.id, name: m.name }))}
+    />
+  );
 }

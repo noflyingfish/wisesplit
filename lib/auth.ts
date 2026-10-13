@@ -28,8 +28,9 @@ export async function setMemberCookie(memberToken: string, data: MemberCookie) {
   //
   // Identity is resolved by `getMemberCookie()`, which returns the FIRST
   // prefix-matching cookie, so a leftover cookie for the same group silently wins and
-  // "switch member" becomes a no-op. Enforcing the invariant here, rather than at each
-  // call site, closes every door at once — `loginWithToken`, `joinGroup` ×2 and
+  // signing in as a different member (opening their `/u/<token>` link) becomes a no-op.
+  // Enforcing the invariant here, rather than at each
+  // call site, closes every door at once — `loginWithToken`, `joinGroup` and
   // `createGroup` — and stops the next writer from reopening the class by forgetting.
   // `clearGroupCookies` only touches cookies at this group's path, so membership in
   // another group is unaffected.

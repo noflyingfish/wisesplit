@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { generateSlug, generateToken } from "@/lib/utils";
 import { setMemberCookie } from "@/lib/auth";
 import { textLengthError } from "@/lib/text-limits";
+import { DEFAULT_CURRENCY_CODE } from "@/lib/currencies";
 
 export async function createGroup(
   formData: FormData
@@ -50,6 +51,12 @@ export async function createGroup(
             { emoji: "📦", name: "Other" },
           ],
         },
+      },
+      // SGD is seeded into every new group (mirrors the default categories above)
+      // and is the default currency everywhere a picker starts. It cannot be
+      // deleted; the user adds other currencies in Settings.
+      currencies: {
+        create: { code: DEFAULT_CURRENCY_CODE },
       },
     },
     include: { members: true },

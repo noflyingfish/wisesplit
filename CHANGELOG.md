@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0 — 2026-10-14
+
+Multi-currency, and identity fixed at entry.
+
+### Features
+- Each group enables its own currencies (SGD by default). Every expense and settlement
+  carries a currency, and balances, the settle-up plan and the dashboard are computed
+  **per currency** — never blended across them
+- Identity is fixed when you enter. The join page lists the group's members and lets you
+  pick your name; it cannot create new members, and you cannot switch from inside the app
+
+### Breaking
+- `Expense` and `Settlement` gain a **required** `currencyId`, so existing rows cannot be
+  migrated. The upgrade recreates the tables and **discards all data** —
+  `prisma/production-recreate-tables.sql`
+
+### Known limitations
+Unchanged from 1.0.0: knowing a group's slug is enough to mint a session for it, and
+deleting an expense or category does not verify it belongs to the group being viewed.
+
 ## 1.0.0 — 2026-10-05
 
 First release. Deployed on Vercel against a managed MariaDB.

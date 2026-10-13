@@ -52,14 +52,22 @@ defaults:
 
 profiles:
   # Local development. Safe to wipe and re-create.
+  #
+  # NOTE: dev and test override `password` because the local database user and
+  # the production user do NOT share a password, while `defaults` names only one
+  # variable. Without this override both profiles resolve to the PRODUCTION
+  # password and fail locally with a bare `ERROR 1045`. `prod` deliberately keeps
+  # the `defaults` reference so it never reads the local variable.
   dev:
     database:
       name: wisesplit_dev
+      password: ${WISESPLIT_LOCAL_DB_PASSWORD}
 
   # QA / automated test runs. Nothing here is precious.
   test:
     database:
       name: wisesplit_test
+      password: ${WISESPLIT_LOCAL_DB_PASSWORD}
 
   # The real deployment. Every value that differs per host comes from the
   # environment, so this file can be deployed unchanged.

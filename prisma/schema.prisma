@@ -31,6 +31,7 @@ model Group {
   expenses     Expense[]
   settlements  Settlement[]
   categories   Category[]
+  currencies   Currency[]
 
 }
 
@@ -62,6 +63,25 @@ model Category {
   @@unique([groupId, name])
 }
 
+/// A currency a group has enabled, chosen from the hardcoded ISO 4217 master list
+/// (`lib/currencies.ts`). Identity is the code ALONE — there is no display label,
+/// symbol or "primary" flag column; the symbol and minor units come from
+/// `Intl.NumberFormat` at display time.
+///
+/// SGD is seeded into every new group and can never be deleted. Any other code may
+/// be deleted only while it is unused (no expense and no settlement references it).
+model Currency {
+  id      String @id @default(cuid())
+  code    String
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  expenses    Expense[]
+  settlements Settlement[]
+
+  @@unique([groupId, code])
+}
+
 model Expense {
   id          String   @id @default(cuid())
   description String
@@ -75,6 +95,11 @@ model Expense {
   group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Required: every amount carries a currency. Deletion of an in-use currency is
+  /// BLOCKED (default Restrict on a required relation), and the deleteCurrency
+  /// action refuses it first with a readable message.
+  currencyId  String
+  currency    Currency @relation(fields: [currencyId], references: [id])
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
   /// Which of the three split modes the user actually chose: "equal" | "unequal"
@@ -118,6 +143,10 @@ model Settlement {
   paidBy       GroupMember @relation("PaidByMember", fields: [paidById], references: [id])
   receivedById String
   receivedBy   GroupMember @relation("ReceivedByMember", fields: [receivedById], references: [id])
+  /// Required: a settlement is denominated in one of the group's currencies, so a
+  /// TWD debt is never cleared as SGD.
+  currencyId   String
+  currency     Currency @relation(fields: [currencyId], references: [id])
   amount       Decimal  @db.Decimal(12, 2)
   createdAt    DateTime @default(now())
 

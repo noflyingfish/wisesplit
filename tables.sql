@@ -1,13 +1,16 @@
 -- ============================================================================
 -- Wisesplit — schema for the online MariaDB database
--- Generated from prisma/schema.prisma (6 models).
+-- Generated from prisma/schema.prisma (7 models).
 --
--- *** THE MONEY COLUMNS ARE THE POST-MIGRATION TARGET, NOT TODAY'S SHAPE. ***
 -- The four money columns are DECIMAL(12,2) / DECIMAL(5,2), deliberately NOT
--- DOUBLE. The app cannot read this database correctly until the code refactor
--- lands — Prisma returns DECIMAL as a Decimal OBJECT, not a JS number. See the
--- MONEY section at the foot of this file before pointing the app at it.
--- Every other column matches today's schema exactly.
+-- DOUBLE. Prisma hands them to the app as Decimal OBJECTS, not JS numbers — that
+-- refactor LANDED (2026-09-24) and is what is deployed. All money arithmetic goes
+-- through `lib/money.ts`. See the MONEY section at the foot of this file.
+--
+-- MONEY IS PER-CURRENCY AND IS NEVER CONVERTED. Every Expense and Settlement
+-- carries a REQUIRED `currencyId`; amounts in different currencies are never
+-- summed and no exchange rate exists anywhere in the app. `lib/balance.ts`
+-- buckets every amount by its currency before netting anything.
 --
 -- TARGET ENGINE: MariaDB 11.1.5 (ubu2204) — see the NOTE AT THE FOOT on that
 -- version's support status. Everything below is also valid MySQL 5.7+/8.0, so
@@ -121,16 +124,42 @@ CREATE TABLE IF NOT EXISTS `Category` (
 
 
 -- ---------------------------------------------------------------------------
+-- Currency
+--   A currency this group has enabled, chosen from the hardcoded ISO 4217 list
+--   in lib/currencies.ts. Identity is the `code` ALONE — no display label, no
+--   symbol, no "primary" flag. UNIQUE(groupId, code) mirrors Category: it is what
+--   stops the same code being added twice to one group (the server checks first
+--   for a readable error; this constraint is the backstop).
+--
+--   SGD is seeded into every new group by the createGroup action and can never be
+--   deleted. Any other code may be deleted only while it is unused.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Currency` (
+  `id`      VARCHAR(191) NOT NULL,
+  `code`    VARCHAR(191) NOT NULL,
+  `groupId` VARCHAR(191) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `Currency_groupId_code_key` (`groupId`, `code`),
+  CONSTRAINT `Currency_groupId_fkey`
+    FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+
+-- ---------------------------------------------------------------------------
 -- Expense
---   `amount` is DECIMAL(12,2) — exact decimal, not a float. This is the
---   POST-MIGRATION target; see the MONEY note at the foot of this file before
---   pointing the app at it.
+--   `amount` is DECIMAL(12,2) — exact decimal, not a float, denominated in this
+--   row's `currencyId`. See the MONEY note at the foot of this file.
 --
 --   `splitType` is NULLABLE ON PURPOSE. It records which of the three split
 --   modes the user chose ("equal" | "unequal" | "percentage"). Rows written
 --   before the column existed carry no answer, and NULL means
 --   "unknown — fall back to the share-shape heuristic", NOT "equal".
 --   Do not add a default here; the distinction is load-bearing.
+--
+--   `currencyId` is REQUIRED: every amount carries a currency. ON DELETE is
+--   RESTRICT (Prisma's default for a required relation), so a currency in use
+--   cannot be deleted; the deleteCurrency action refuses it first with a message.
 --
 --   ON DELETE for paidBy is RESTRICT (Prisma's default for a required
 --   relation), so a member who has paid an expense cannot be deleted.
@@ -143,6 +172,7 @@ CREATE TABLE IF NOT EXISTS `Expense` (
   `paidById`    VARCHAR(191)  NOT NULL,
   `groupId`     VARCHAR(191)  NOT NULL,
   `categoryId`  VARCHAR(191)  NULL,
+  `currencyId`  VARCHAR(191)  NOT NULL,
   `date`        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `createdAt`   DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `splitType`   VARCHAR(191)  NULL,
@@ -150,6 +180,7 @@ CREATE TABLE IF NOT EXISTS `Expense` (
   KEY `Expense_groupId_createdAt_idx` (`groupId`, `createdAt`),
   KEY `Expense_paidById_idx` (`paidById`),
   KEY `Expense_categoryId_idx` (`categoryId`),
+  KEY `Expense_currencyId_idx` (`currencyId`),
   CONSTRAINT `Expense_groupId_fkey`
     FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -158,7 +189,10 @@ CREATE TABLE IF NOT EXISTS `Expense` (
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Expense_categoryId_fkey`
     FOREIGN KEY (`categoryId`) REFERENCES `Category` (`id`)
-    ON DELETE SET NULL ON UPDATE CASCADE
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `Expense_currencyId_fkey`
+    FOREIGN KEY (`currencyId`) REFERENCES `Currency` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 
@@ -195,18 +229,22 @@ CREATE TABLE IF NOT EXISTS `ExpenseShare` (
 -- Settlement
 --   paidById is the member who PAID; receivedById is the member who RECEIVED.
 --   Both are RESTRICT, so a member referenced by a settlement cannot be deleted.
+--   `currencyId` is REQUIRED and RESTRICT: a settlement is denominated in one of
+--   the group's currencies, and an in-use currency cannot be deleted.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Settlement` (
   `id`           VARCHAR(191)  NOT NULL,
   `groupId`      VARCHAR(191)  NOT NULL,
   `paidById`     VARCHAR(191)  NOT NULL,
   `receivedById` VARCHAR(191)  NOT NULL,
+  `currencyId`   VARCHAR(191)  NOT NULL,
   `amount`       DECIMAL(12,2) NOT NULL,
   `createdAt`    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `Settlement_groupId_createdAt_idx` (`groupId`, `createdAt`),
   KEY `Settlement_paidById_idx` (`paidById`),
   KEY `Settlement_receivedById_idx` (`receivedById`),
+  KEY `Settlement_currencyId_idx` (`currencyId`),
   CONSTRAINT `Settlement_groupId_fkey`
     FOREIGN KEY (`groupId`) REFERENCES `Group` (`id`)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -215,6 +253,9 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Settlement_receivedById_fkey`
     FOREIGN KEY (`receivedById`) REFERENCES `GroupMember` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `Settlement_currencyId_fkey`
+    FOREIGN KEY (`currencyId`) REFERENCES `Currency` (`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -252,7 +293,7 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
 
 
 -- ============================================================================
--- MONEY — DECIMAL(12,2). READ BEFORE POINTING THE APP AT THIS DATABASE.
+-- MONEY — DECIMAL(12,2), PER CURRENCY, READ AS `Decimal` OBJECTS.
 --
 -- The four money columns are exact decimal:
 --     Expense.amount           DECIMAL(12,2)
@@ -272,9 +313,9 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
 -- (12,2) is 10 integer digits + 2 decimal: up to 9,999,999,999.99. About $10bn
 -- of headroom on a holiday-expenses app — you will never think about it again.
 --
--- *** THE APP WILL NOT READ THIS CORRECTLY UNTIL THE REFACTOR LANDS. ***
--- Prisma returns DECIMAL as a Decimal OBJECT, not a JS number. Until the code
--- is refactored, this breaks:
+-- THE APP READS THESE COLUMNS AS Decimal OBJECTS, NOT JS NUMBERS — that refactor
+-- LANDED 2026-09-24 and is what is deployed. Plain JS arithmetic against a
+-- Decimal still breaks, so these remain the rules to follow:
 --   - `a + b`: STRING CONCATENATION. 10.05 + 5.02 is "10.055.02", not 15.07.
 --   - `a - b` / `a * n` / `a / n`: silently coerced through a float, so the
 --     exactness is lost (10.05 - 5.02 is 5.030000000000001).
@@ -300,21 +341,21 @@ CREATE TABLE IF NOT EXISTS `Settlement` (
 -- answers instead of errors, but they do not throw and do not return NaN. The
 -- list above is the measured one; the helper that replaces them is `lib/money.ts`.
 --
--- Measured scope of that refactor (2026-09-22): the money engine is 572 lines
--- across 5 files — lib/utils.ts, lib/balance.ts, lib/expense-shares.ts,
+-- Measured scope of that refactor (2026-09-22, now LANDED): the money engine is
+-- 572 lines across 5 files — lib/utils.ts, lib/balance.ts, lib/expense-shares.ts,
 -- expenses/_actions.ts, settle/_actions.ts. There are 21 formatCurrency call
--- sites, all absorbed by making that one function accept Decimal; only 9
+-- sites, all absorbed by making that one function take (amount, currency); only 9
 -- Prisma money reads; 16 landmine occurrences in total.
 --
--- The Prisma schema must change to match, in the same pass:
+-- The Prisma schema matches, in the same pass (LANDED):
 --     provider    = "sqlite"  ->  "mysql"
 --     amount      Float       ->  Decimal  @db.Decimal(12, 2)
 --     percentage  Float?      ->  Decimal? @db.Decimal(5, 2)
 -- Pin the precision explicitly: a bare Prisma `Decimal` maps to DECIMAL(65,30)
 -- and `db pull` would widen these columns back to that.
 --
--- LOADING THIS SCHEMA NOW IS FINE — it only creates tables. The app simply
--- must not be pointed at this database until the code is updated.
+-- This file is the schema of record for the LIVE database; the app is pointed at
+-- it and reads it correctly.
 -- ============================================================================
 
 
